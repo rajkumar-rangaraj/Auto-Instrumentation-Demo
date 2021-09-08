@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "DemoConsoleAppDeps": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_STARTUP_HOOKS": "D:\\OpenTelemetry-AutoInstrumentation\\bin\\Debug\\StartupHook\\netcoreapp3.1\\StartupHook.dll",
+        "DOTNET_SHARED_STORE": "D:\\Auto\\DiagSrcDemo\\RuntimeStore\\store",
+        "DOTNET_ADDITIONAL_DEPS": "D:\\Auto\\DiagSrcDemo\\RuntimeStore\\AdditionalDeps"
+      }
+    }
+  }
+}

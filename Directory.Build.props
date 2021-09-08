@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <EnlistmentRoot>$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildStartupDirectory), 'EnlistmentRoot.marker'))</EnlistmentRoot>
+	<RelativeOutputPathBase>$(MSBuildProjectDirectory.Substring($(EnlistmentRoot.Length)))</RelativeOutputPathBase>
+    <BinRoot>$(MSBuildStartupDirectory)\bin</BinRoot>
+	<ProjectDirectoryName>$(MSBuildProjectDirectory.Substring($(MSBuildProjectDirectory.LastIndexOf('\'))).Substring(1))</ProjectDirectoryName>
+    <OutputPath>$(BinRoot)\$(Configuration)\$(ProjectDirectoryName)</OutputPath>
+	<IntermediateOutputPath>$(EnlistmentRoot)\obj\$(Configuration)\$(RelativeOutputPathBase)\</IntermediateOutputPath>
+  </PropertyGroup>
+</Project>

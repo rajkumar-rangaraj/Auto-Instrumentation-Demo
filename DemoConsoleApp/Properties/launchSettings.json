@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "DemoConsoleApp": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_STARTUP_HOOKS": "D:\\OpenTelemetry-AutoInstrumentation\\bin\\Debug\\StartupHook\\netcoreapp3.1\\StartupHook.dll"
+      }
+    }
+  }
+}
