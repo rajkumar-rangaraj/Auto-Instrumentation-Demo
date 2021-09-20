@@ -1,0 +1,29 @@
+﻿{
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:49992",
+      "sslPort": 0
+    }
+  },
+  "profiles": {
+    "IIS Express": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_STARTUP_HOOKS": "D:\\OpenTelemetry-AutoInstrumentation\\bin\\Debug\\StartupHook\\netcoreapp3.1\\StartupHook.dll"
+      }
+    },
+    "DemoAspNetCore": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:5000",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_STARTUP_HOOKS": "D:\\OpenTelemetry-AutoInstrumentation\\bin\\Debug\\StartupHook\\netcoreapp3.1\\StartupHook.dll"
+      }
+    }
+  }
+}

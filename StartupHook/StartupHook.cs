@@ -1,9 +1,10 @@
 ﻿using System;
-using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using OpenTelemetry.StartupHookDemo;
+using OpenTelemetry.StartupHookDemo.Adaptor;
 
 internal class StartupHook
 {
@@ -11,15 +12,35 @@ internal class StartupHook
 
     public static void Initialize()
     {
-        AssemblyLoadContext.Default.Resolving += SharedHostPolicy.SharedAssemblyResolver.LoadAssemblyFromSharedLocation;
+        AssemblyLoadContext.Default.Resolving += SharedAssemblyResolver.LoadAssemblyFromSharedLocation;
+
+        // Load System.Diagnostics.DiagnosticSource for the framework to pick the correct version from TPL.
+        // This bring the System.Diagnostics.DiagnosticSource used by this application.
+        var appDiagnosticSourceAssembly = Assembly.Load(new AssemblyName("System.Diagnostics.DiagnosticSource, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51"));
+        Activity.DefaultIdFormat = ActivityIdFormat.W3C;
+        Activity.ForceDefaultIdFormat = true;
+
+        // Add OpenTelemetry SDK.
         var OtelInsFilePath = Path.Combine(OTelInsFolderLocation, "OpenTelemetryInstrumentation.dll");
-        Assembly otelInsAssembly = Assembly.LoadFrom(OtelInsFilePath);
+        Assembly otelInsAssembly = Assembly.LoadFile(OtelInsFilePath);
         
         Type type = otelInsAssembly.GetType("OpenTelemetryInstrumentation.TestConsoleExporter");
         var instance = Activator.CreateInstance(type);
 
+        // Enable OpenTelemety Instrumentation.
         MethodInfo toInvoke = type.GetMethod("Enable");
         toInvoke.Invoke(instance, null);
+
+        // Add DiagnosticSource adaptors when app has lower version of DiagnosticSource when compared with OpenTelemetry DiagnosticSource.
+        if (SharedAssemblyResolver.oTelDiagnosticSourceAssembly.GetName().Version > appDiagnosticSourceAssembly.GetName().Version)
+        {
+            var subscriber = new DiagnosticSourceSubscriber(
+                            listener =>
+                            listener.Name == "HttpHandlerDiagnosticListener" || listener.Name == "Microsoft.AspNetCore",
+                            //listener.Name == "Samples.SampleServer" || listener.Name == "Samples.SampleClient", 
+                            null);
+            subscriber.Subscribe();
+        }
     }
 
     private static string GetOpenTelemetryInstrumentationPath()
@@ -33,16 +54,23 @@ internal class StartupHook
     }
 }
 
-namespace SharedHostPolicy
+namespace OpenTelemetry.StartupHookDemo
 {
     class SharedAssemblyResolver
     {
+        internal static Assembly oTelDiagnosticSourceAssembly = null;
+
         public static Assembly LoadAssemblyFromSharedLocation(AssemblyLoadContext context, AssemblyName assemblyName)
         {
             var sharedAssemblyPath = Path.Combine(StartupHook.OTelInsFolderLocation, $"{assemblyName.Name}.dll");
             if (File.Exists(sharedAssemblyPath))
             {
-                return Assembly.LoadFrom(sharedAssemblyPath);
+                var assembly = Assembly.LoadFile(sharedAssemblyPath);
+                if(assemblyName.Name == "System.Diagnostics.DiagnosticSource")
+                {
+                    oTelDiagnosticSourceAssembly = assembly;
+                }
+                return assembly;
             }
 
             return null;
