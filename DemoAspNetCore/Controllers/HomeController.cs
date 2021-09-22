@@ -48,6 +48,8 @@ namespace DemoAspNetCore.Controllers
 
         public IActionResult Privacy()
         {
+            Task.Delay(5000).Wait();
+
             return View();
         }
 

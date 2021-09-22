@@ -32,14 +32,13 @@ internal class StartupHook
         toInvoke.Invoke(instance, null);
 
         // Add DiagnosticSource adaptors when app has lower version of DiagnosticSource when compared with OpenTelemetry DiagnosticSource.
-        if (SharedAssemblyResolver.oTelDiagnosticSourceAssembly.GetName().Version > appDiagnosticSourceAssembly.GetName().Version)
+        if (SharedAssemblyResolver.oTelDiagnosticSourceAssembly?.GetName().Version > appDiagnosticSourceAssembly.GetName().Version)
         {
-            var subscriber = new DiagnosticSourceSubscriber(
-                            listener =>
-                            listener.Name == "HttpHandlerDiagnosticListener" || listener.Name == "Microsoft.AspNetCore",
-                            //listener.Name == "Samples.SampleServer" || listener.Name == "Samples.SampleClient", 
-                            null);
-            subscriber.Subscribe();
+            var aspnetSubscriber = new DiagnosticSourceSubscriber(new AspnetCoreDiagnosticSourceListener(), null);
+            aspnetSubscriber.Subscribe();
+
+            var httpClientSubscriber = new DiagnosticSourceSubscriber(new HttpClientDiagnosticSourceListener(), null);
+            httpClientSubscriber.Subscribe();
         }
     }
 

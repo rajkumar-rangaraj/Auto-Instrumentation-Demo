@@ -8,15 +8,26 @@ namespace OpenTelemetry.StartupHookDemo.Adaptor
     internal class DiagnosticSourceSubscriber : IDisposable, IObserver<DiagnosticListener>
     {
         private readonly List<IDisposable> listenerSubscriptions;
+        private readonly Func<string, ListenerHandler> handlerFactory;
         private readonly Func<DiagnosticListener, bool> diagnosticSourceFilter;
         private readonly Func<string, object, object, bool> isEnabledFilter;
         private long disposed;
         private IDisposable allSourcesSubscription;
 
-        public DiagnosticSourceSubscriber(Func<DiagnosticListener, bool> diagnosticSourceFilter,
+        public DiagnosticSourceSubscriber(
+            ListenerHandler handler,
+            Func<string, object, object, bool> isEnabledFilter)
+            : this(_ => handler, value => handler.SourceName == value.Name, isEnabledFilter)
+        {
+        }
+
+        public DiagnosticSourceSubscriber(
+            Func<string, ListenerHandler> handlerFactory,
+            Func<DiagnosticListener, bool> diagnosticSourceFilter,
             Func<string, object, object, bool> isEnabledFilter)
         {
             this.listenerSubscriptions = new List<IDisposable>();
+            this.handlerFactory = handlerFactory ?? throw new ArgumentNullException(nameof(handlerFactory));
             this.diagnosticSourceFilter = diagnosticSourceFilter;
             this.isEnabledFilter = isEnabledFilter;
         }
@@ -34,19 +45,8 @@ namespace OpenTelemetry.StartupHookDemo.Adaptor
             if ((Interlocked.Read(ref this.disposed) == 0) &&
                 this.diagnosticSourceFilter(value))
             {
-                IObserver<KeyValuePair<string, object>> listener = null;
-                if (value.Name == "HttpHandlerDiagnosticListener")
-                {
-                    listener = new HttpClientDiagnosticSourceListener();
-                }
-                else if(value.Name == "Microsoft.AspNetCore")
-                {
-                    listener = new AspnetCoreDiagnosticSourceListener();
-                }
-                else
-                {
-                    // listener = new HttpClientDiagnosticSourceListener();
-                }
+                var handler = this.handlerFactory(value.Name);
+                var listener = new DiagnosticSourceListener(handler);
                 var subscription = this.isEnabledFilter == null ?
                     value.Subscribe(listener) :
                     value.Subscribe(listener, this.isEnabledFilter);

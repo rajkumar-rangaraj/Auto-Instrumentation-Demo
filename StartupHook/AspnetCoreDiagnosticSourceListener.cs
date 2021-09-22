@@ -5,35 +5,21 @@ using System.Reflection;
 
 namespace OpenTelemetry.StartupHookDemo.Adaptor
 {
-    public class AspnetCoreDiagnosticSourceListener : IObserver<KeyValuePair<string, object>>
+    internal class AspnetCoreDiagnosticSourceListener : ListenerHandler
     {
-        internal readonly MethodInfo startActivityMethodInfo = null;
+        private const string DiagnosticSourceName = "Microsoft.AspNetCore";
+
         internal readonly MethodInfo onStartActivityMethodInfo = null;
         internal readonly MethodInfo onStopActivityMethodInfo = null;
-
-        internal readonly PropertyInfo activityCurrentPropertyInfo = null;
         
         internal readonly object httpInListenerInstance;
         internal readonly object activitySourceInstance = null;
 
-        public AspnetCoreDiagnosticSourceListener()
+        public AspnetCoreDiagnosticSourceListener() : base(DiagnosticSourceName)
         {
-            Assembly diagnosticSourceAssembly = SharedAssemblyResolver.oTelDiagnosticSourceAssembly;
             BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public;
-
-            // Create a instance of ActivitySource.
-            Type activitySourceType = diagnosticSourceAssembly.GetType("System.Diagnostics.ActivitySource");
-            activitySourceInstance = Activator.CreateInstance(activitySourceType, flags, null, new object[] { "OpenTelemetry.Instrumentation.Http", "1.0.0.0" }, null);
-
-            // Get Activity.Current.
-            Type activityType = diagnosticSourceAssembly.GetType("System.Diagnostics.Activity");
-            activityCurrentPropertyInfo = activityType.GetProperty("Current", BindingFlags.Public | BindingFlags.Static);
-
-            // ActivitySource.StartActivity
-            // This is needed for to get the type for IEnumerable<ActivityLink> to use in signature.
-            FieldInfo linksFieldInfo = activityType.GetField("s_emptyLinks", BindingFlags.NonPublic | BindingFlags.Static);
-            Type[] startActivitySignature = new[] { typeof(string), diagnosticSourceAssembly.GetType("System.Diagnostics.ActivityKind"), typeof(string), typeof(IEnumerable<KeyValuePair<string, object>>), linksFieldInfo.FieldType, typeof(DateTimeOffset) };
-            startActivityMethodInfo = activitySourceType.GetMethod("StartActivity", startActivitySignature);
+            // We could avoid creating many activity source instance and create one for auto-instrumentation. Add it to the source of class library.
+            activitySourceInstance = Activator.CreateInstance(activitySourceType, flags, null, new object[] { "OpenTelemetry.Instrumentation.AspNetCore", "1.0.0.0" }, null);
 
             // Create an instance of HttpHandlerDiagnosticListener with AspNetCoreInstrumentationOptions
             Type aspNetCoreInstrumentationOptionsType = Type.GetType("OpenTelemetry.Instrumentation.AspNetCore.AspNetCoreInstrumentationOptions, OpenTelemetry.Instrumentation.AspNetCore");
@@ -48,64 +34,70 @@ namespace OpenTelemetry.StartupHookDemo.Adaptor
             onStartActivityMethodInfo = httpInListenerType.GetMethod("OnStartActivity", signatureOnStartActivity);
             onStopActivityMethodInfo = httpInListenerType.GetMethod("OnStopActivity", signatureOnStartActivity);
         }
+
         public void OnCompleted()
         {
+        }
+
+        public override void OnCustom(string name, Activity activity, KeyValuePair<string, object> value)
+        {
+            
         }
 
         public void OnError(Exception error)
         {
         }
 
-        public void OnNext(KeyValuePair<string, object> value)
+        public override void OnException(Activity activity, KeyValuePair<string, object> value)
         {
-            if (value.Key.EndsWith("Start", StringComparison.Ordinal))
-            {
-                var currentActivity = Activity.Current;
+            
+        }
 
+        public override void OnStartActivity(Activity activity, KeyValuePair<string, object> value)
+        {
+            // Namespace: System.Diagnostics
+            // ActivitySource.StartActivity(string name,
+            //                              ActivityKind kind,
+            //                              string parentId,
+            //                              IEnumerable<KeyValuePair<string, object?>>? tags = null,
+            //                              IEnumerable<ActivityLink>? links = null,
+            //                              DateTimeOffset startTime = default);
+            var oTelActivity = startActivityMethodInfo.Invoke(
+                activitySourceInstance,
+                new object[] { activity.OperationName,
+                        2,
+                        null,
+                        null,
+                        null,
+                        new DateTimeOffset(activity.StartTimeUtc)});
+
+            // Namespace: OpenTelemetry.Instrumentation.AspNetCore.Implementation
+            // HttpInListener.OnStartActivity(Activity activity, object payload)
+            onStartActivityMethodInfo.Invoke(httpInListenerInstance, new object[] { oTelActivity, value.Value });
+        }
+
+        public override void OnStopActivity(Activity activity, KeyValuePair<string, object> value)
+        {
+            try
+            {
                 // Namespace: System.Diagnostics
-                // ActivitySource.StartActivity(string name,
-                //                              ActivityKind kind,
-                //                              string parentId,
-                //                              IEnumerable<KeyValuePair<string, object?>>? tags = null,
-                //                              IEnumerable<ActivityLink>? links = null,
-                //                              DateTimeOffset startTime = default);
-                var activity = startActivityMethodInfo.Invoke(
-                    activitySourceInstance, 
-                    new object[] { currentActivity.OperationName, 
-                    2,
-                    null,
-                    null, 
-                    null,
-                    new DateTimeOffset(currentActivity.StartTimeUtc)
-                    });
+                // Activity.Current
+                dynamic currentOtelActivity = activityCurrentPropertyInfo.GetValue(null, null);
+                if (currentOtelActivity != null)
+                {
+                    // TODO: Add Tags, Baggage - If exists.
+                    // TODO: Call OnCustom if value.key == "Microsoft.AspNetCore.Mvc.BeforeAction"
 
-                // Namespace: OpenTelemetry.Instrumentation.AspNetCore.Implementation
-                // HttpInListener.OnStartActivity(Activity activity, object payload)
-                onStartActivityMethodInfo.Invoke(httpInListenerInstance, new object[] {activity, value.Value});
+                    // Namespace: OpenTelemetry.Instrumentation.AspNetCore.Implementation
+                    // HttpInListener.OnStopActivity(Activity activity, object payload)
+                    onStopActivityMethodInfo.Invoke(httpInListenerInstance, new object[] { currentOtelActivity, value.Value });
+
+                    // stop the current activity in Otel diagnostic source as we created it. 
+                    activityStopMethodInfo.Invoke(currentOtelActivity, null);
+                }
             }
-            else if (value.Key.EndsWith("Stop", StringComparison.Ordinal))
+            catch (Exception)
             {
-                try
-                {
-                    // Namespace: System.Diagnostics
-                    // Activity.Current
-                    dynamic currentOtelActivity = activityCurrentPropertyInfo.GetValue(null, null);
-                    if (currentOtelActivity != null)
-                    {
-                        // TODO: Add Tags, Baggage - If exists.
-
-                        // Namespace: OpenTelemetry.Instrumentation.AspNetCore.Implementation
-                        // HttpInListener.OnStopActivity(Activity activity, object payload)
-                        onStopActivityMethodInfo.Invoke(httpInListenerInstance, new object[] { currentOtelActivity, value.Value });
-
-                        // stop the current activity in Otel diagnostic source as we created it. 
-                        currentOtelActivity.Stop();
-                    }
-                }
-                catch (Exception)
-                {
-                }
-
             }
         }
     }
